@@ -1,3 +1,4 @@
+from app.chat.routes import router as chat_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
