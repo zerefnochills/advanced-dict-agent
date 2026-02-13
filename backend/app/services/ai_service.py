@@ -17,6 +17,7 @@ def call_gemini(prompt: str, system: str):
 
     try:
         return data["candidates"][0]["content"]["parts"][0]["text"]
-    except:
+    except Exception:
         return "AI response error."
+
 
