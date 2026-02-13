@@ -1,11 +1,11 @@
 import React from "react";
-import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Button,
-  Box,
-  Container,
+import { 
+  AppBar, 
+  Toolbar, 
+  Typography, 
+  Button, 
+  Box, 
+  Container, 
   Grid,
   Card,
   CardContent,
@@ -24,8 +24,6 @@ import {
   Security,
   CloudSync
 } from "@mui/icons-material";
-import FloatingAIChatbot from "../components/FloatingAIChatbot.tsx";
-
 
 const features = [
   {
@@ -65,9 +63,9 @@ function Home() {
   const theme = useTheme();
 
   return (
-    <Box sx={{
+    <Box sx={{ 
       minHeight: '100vh',
-      background: theme.palette.mode === 'dark'
+      background: theme.palette.mode === 'dark' 
         ? 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)'
         : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       position: 'relative',
@@ -93,10 +91,10 @@ function Home() {
       />
 
       {/* Navigation */}
-      <AppBar
-        position="static"
+      <AppBar 
+        position="static" 
         elevation={0}
-        sx={{
+        sx={{ 
           background: 'transparent',
           backdropFilter: 'blur(10px)',
           borderBottom: `1px solid ${alpha(theme.palette.common.white, 0.1)}`
@@ -109,13 +107,13 @@ function Home() {
               Data Dictionary Agent
             </Typography>
           </Box>
-          <Button
-            sx={{ color: 'white', mr: 2 }}
+          <Button 
+            sx={{ color: 'white', mr: 2 }} 
             onClick={() => navigate("/login")}
           >
             Login
           </Button>
-          <Button
+          <Button 
             variant="contained"
             onClick={() => navigate("/signup")}
             sx={{
@@ -135,15 +133,15 @@ function Home() {
       {/* Hero Section */}
       <Container maxWidth="lg">
         <Fade in timeout={1000}>
-          <Box
-            mt={12}
-            mb={10}
+          <Box 
+            mt={12} 
+            mb={10} 
             textAlign="center"
             sx={{ position: 'relative', zIndex: 1 }}
           >
             <Zoom in timeout={1200}>
-              <Typography
-                variant="h2"
+              <Typography 
+                variant="h2" 
                 gutterBottom
                 sx={{
                   color: 'white',
@@ -163,9 +161,9 @@ function Home() {
             </Zoom>
 
             <Fade in timeout={1500}>
-              <Typography
-                variant="h5"
-                sx={{
+              <Typography 
+                variant="h5" 
+                sx={{ 
                   color: 'rgba(255, 255, 255, 0.9)',
                   mb: 5,
                   maxWidth: '800px',
@@ -255,8 +253,8 @@ function Home() {
                     }}
                   >
                     <CardContent sx={{ p: 4, textAlign: 'center' }}>
-                      <Box
-                        sx={{
+                      <Box 
+                        sx={{ 
                           color: 'white',
                           mb: 2,
                           display: 'inline-flex',
@@ -267,15 +265,15 @@ function Home() {
                       >
                         {feature.icon}
                       </Box>
-                      <Typography
-                        variant="h6"
-                        gutterBottom
+                      <Typography 
+                        variant="h6" 
+                        gutterBottom 
                         sx={{ color: 'white', fontWeight: 700 }}
                       >
                         {feature.title}
                       </Typography>
-                      <Typography
-                        variant="body2"
+                      <Typography 
+                        variant="body2" 
                         sx={{ color: 'rgba(255, 255, 255, 0.8)' }}
                       >
                         {feature.description}
@@ -290,8 +288,8 @@ function Home() {
 
         {/* CTA Section */}
         <Fade in timeout={2000}>
-          <Box
-            textAlign="center"
+          <Box 
+            textAlign="center" 
             py={8}
             sx={{
               background: 'rgba(255, 255, 255, 0.1)',
@@ -301,10 +299,10 @@ function Home() {
               mb: 6
             }}
           >
-            <Typography
-              variant="h3"
-              gutterBottom
-              sx={{
+            <Typography 
+              variant="h3" 
+              gutterBottom 
+              sx={{ 
                 color: 'white',
                 fontWeight: 700,
                 fontSize: { xs: '2rem', md: '3rem' }
@@ -312,8 +310,8 @@ function Home() {
             >
               Ready to get started?
             </Typography>
-            <Typography
-              variant="h6"
+            <Typography 
+              variant="h6" 
               sx={{ color: 'rgba(255, 255, 255, 0.9)', mb: 4 }}
             >
               Join hundreds of teams documenting their data with AI
@@ -344,10 +342,8 @@ function Home() {
           </Box>
         </Fade>
       </Container>
-      <FloatingAIChatbot />
     </Box>
   );
 }
 
 export default Home;
-

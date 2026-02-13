@@ -26,7 +26,6 @@ import {
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { signupUser, setAuthenticated } from "../utils/auth.ts";
-import FloatingAIChatbot from "../components/FloatingAIChatbot.tsx";
 
 function Signup() {
   const navigate = useNavigate();
@@ -51,7 +50,7 @@ function Signup() {
   };
 
   const passwordStrength = getPasswordStrength(password);
-
+  
   const getStrengthLabel = (strength: number) => {
     if (strength === 0) return '';
     if (strength < 40) return 'Weak';
@@ -224,7 +223,7 @@ function Signup() {
                   ),
                 }}
               />
-
+              
               {password && (
                 <Fade in>
                   <Box mt={1}>
@@ -232,9 +231,9 @@ function Signup() {
                       <Typography variant="caption" color="text.secondary">
                         Password strength:
                       </Typography>
-                      <Typography
-                        variant="caption"
-                        sx={{
+                      <Typography 
+                        variant="caption" 
+                        sx={{ 
                           color: getStrengthColor(passwordStrength),
                           fontWeight: 600
                         }}
@@ -367,7 +366,6 @@ function Signup() {
           </Paper>
         </Zoom>
       </Container>
-      <FloatingAIChatbot />
     </Box>
   );
 }

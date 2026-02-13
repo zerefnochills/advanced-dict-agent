@@ -9,7 +9,8 @@ import {
   Link,
   InputAdornment,
   IconButton,
-  LinearProgress,
+  Checkbox,
+  FormControlLabel,
   useTheme,
   alpha,
   Fade,
@@ -20,79 +21,41 @@ import {
   VisibilityOff,
   Email,
   Lock,
-  Person,
-  ArrowForward,
-  CheckCircle
+  ArrowForward
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
-import { signupUser, setAuthenticated } from "../utils/auth.ts";
-import FloatingAIChatbot from "../components/FloatingAIChatbot.tsx";
+import { loginUser, setAuthenticated } from "../utils/auth.ts";
 
-function Signup() {
+function Login() {
   const navigate = useNavigate();
   const theme = useTheme();
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const getPasswordStrength = (pass: string): number => {
-    let strength = 0;
-    if (pass.length >= 8) strength += 25;
-    if (pass.length >= 12) strength += 25;
-    if (/[a-z]/.test(pass) && /[A-Z]/.test(pass)) strength += 25;
-    if (/[0-9]/.test(pass)) strength += 15;
-    if (/[^a-zA-Z0-9]/.test(pass)) strength += 10;
-    return Math.min(strength, 100);
-  };
-
-  const passwordStrength = getPasswordStrength(password);
-
-  const getStrengthLabel = (strength: number) => {
-    if (strength === 0) return '';
-    if (strength < 40) return 'Weak';
-    if (strength < 70) return 'Medium';
-    return 'Strong';
-  };
-
-  const getStrengthColor = (strength: number) => {
-    if (strength < 40) return theme.palette.error.main;
-    if (strength < 70) return theme.palette.warning.main;
-    return theme.palette.success.main;
-  };
-
-  const handleSignup = async () => {
+  const handleLogin = async () => {
     setError("");
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
-      return;
-    }
-
     setIsLoading(true);
-
-    // Simulate API call
+    
+    // Simulate loading
     setTimeout(() => {
-      signupUser({ name, email, password });
-      setAuthenticated();
-      // Instead of going straight to dashboard, we'll show welcome wizard
-      localStorage.setItem('showWelcomeWizard', 'true');
-      navigate("/dashboard");
+      const success = loginUser(email, password);
+      if (success) {
+        setAuthenticated();
+        navigate("/dashboard");
+      } else {
+        setError("Invalid credentials. Please try again.");
+        setIsLoading(false);
+      }
     }, 800);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      handleSignup();
+      handleLogin();
     }
   };
 
@@ -107,8 +70,7 @@ function Signup() {
           ? 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)'
           : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         position: 'relative',
-        overflow: 'hidden',
-        py: 4
+        overflow: 'hidden'
       }}
     >
       {/* Animated background */}
@@ -137,14 +99,14 @@ function Signup() {
                   mb: 1
                 }}
               >
-                Create Account
+                Welcome Back
               </Typography>
             </Zoom>
             <Typography
               variant="body1"
               sx={{ color: 'rgba(255, 255, 255, 0.8)' }}
             >
-              Start documenting your databases with AI
+              Log in to continue to your dashboard
             </Typography>
           </Box>
         </Fade>
@@ -163,24 +125,7 @@ function Signup() {
               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
             }}
           >
-            <Box mb={3}>
-              <TextField
-                fullWidth
-                label="Full Name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyPress={handleKeyPress}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Person color="action" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Box>
-
-            <Box mb={3}>
+            <Box mb={4}>
               <TextField
                 fullWidth
                 label="Email Address"
@@ -195,10 +140,17 @@ function Signup() {
                     </InputAdornment>
                   ),
                 }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&:hover fieldset': {
+                      borderColor: 'primary.main',
+                    },
+                  },
+                }}
               />
             </Box>
 
-            <Box mb={2}>
+            <Box mb={3}>
               <TextField
                 fullWidth
                 label="Password"
@@ -223,79 +175,35 @@ function Signup() {
                     </InputAdornment>
                   ),
                 }}
-              />
-
-              {password && (
-                <Fade in>
-                  <Box mt={1}>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
-                      <Typography variant="caption" color="text.secondary">
-                        Password strength:
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        sx={{
-                          color: getStrengthColor(passwordStrength),
-                          fontWeight: 600
-                        }}
-                      >
-                        {getStrengthLabel(passwordStrength)}
-                      </Typography>
-                    </Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={passwordStrength}
-                      sx={{
-                        height: 6,
-                        borderRadius: 1,
-                        bgcolor: alpha(theme.palette.common.black, 0.1),
-                        '& .MuiLinearProgress-bar': {
-                          bgcolor: getStrengthColor(passwordStrength),
-                          borderRadius: 1,
-                        },
-                      }}
-                    />
-                  </Box>
-                </Fade>
-              )}
-            </Box>
-
-            <Box mb={3}>
-              <TextField
-                fullWidth
-                label="Confirm Password"
-                type={showConfirmPassword ? 'text' : 'password'}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                onKeyPress={handleKeyPress}
-                error={confirmPassword !== '' && password !== confirmPassword}
-                helperText={
-                  confirmPassword !== '' && password !== confirmPassword
-                    ? 'Passwords do not match'
-                    : ''
-                }
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Lock color="action" />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      {confirmPassword !== '' && password === confirmPassword ? (
-                        <CheckCircle color="success" />
-                      ) : (
-                        <IconButton
-                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                          edge="end"
-                        >
-                          {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
-                        </IconButton>
-                      )}
-                    </InputAdornment>
-                  ),
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&:hover fieldset': {
+                      borderColor: 'primary.main',
+                    },
+                  },
                 }}
               />
+            </Box>
+
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Remember me"
+              />
+              <Link
+                component="button"
+                variant="body2"
+                onClick={() => alert('Password reset feature coming soon!')}
+                sx={{ textDecoration: 'none' }}
+              >
+                Forgot password?
+              </Link>
             </Box>
 
             {error && (
@@ -320,8 +228,8 @@ function Signup() {
               fullWidth
               variant="contained"
               size="large"
-              onClick={handleSignup}
-              disabled={isLoading || !name || !email || !password || !confirmPassword}
+              onClick={handleLogin}
+              disabled={isLoading || !email || !password}
               endIcon={<ArrowForward />}
               sx={{
                 py: 1.75,
@@ -341,16 +249,16 @@ function Signup() {
                 transition: 'all 0.3s ease',
               }}
             >
-              {isLoading ? 'Creating account...' : 'Create Account'}
+              {isLoading ? 'Logging in...' : 'Log In'}
             </Button>
 
             <Box mt={4} textAlign="center">
               <Typography variant="body2" color="text.secondary">
-                Already have an account?{' '}
+                Don't have an account?{' '}
                 <Link
                   component="button"
                   variant="body2"
-                  onClick={() => navigate("/login")}
+                  onClick={() => navigate("/signup")}
                   sx={{
                     fontWeight: 600,
                     textDecoration: 'none',
@@ -360,16 +268,15 @@ function Signup() {
                     },
                   }}
                 >
-                  Log in
+                  Sign up for free
                 </Link>
               </Typography>
             </Box>
           </Paper>
         </Zoom>
       </Container>
-      <FloatingAIChatbot />
     </Box>
   );
 }
 
-export default Signup;
+export default Login;
