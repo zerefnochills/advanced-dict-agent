@@ -74,14 +74,12 @@ class AIService:
             raise
         except Exception as e:
             logger.error(f"Unexpected error calling Claude: {e}")
-            raise
+            raise APIError(f"Failed to call Claude: {str(e)}")
     
     def generate_table_description(
         self, 
         table_name: str, 
         columns: List[Dict[str, Any]],
-        foreign_keys: Optional[List[Dict[str, Any]]] = None,
-        row_count: Optional[int] = None,
         sample_data: Optional[List[Dict]] = None
     ) -> Dict[str, str]:
         """
@@ -90,8 +88,6 @@ class AIService:
         Args:
             table_name: Name of the table
             columns: List of column metadata dicts with keys: name, data_type, nullable, etc.
-            foreign_keys: Optional list of foreign key metadata
-            row_count: Optional row count for context
             sample_data: Optional sample rows from the table
             
         Returns:
@@ -106,18 +102,6 @@ class AIService:
                 f"{' - NULLABLE' if col.get('nullable') else ''}"
                 for col in columns
             ])
-            
-            # Build foreign key section if available
-            fk_section = ""
-            if foreign_keys and len(foreign_keys) > 0:
-                fk_section = "\n\nForeign Keys:\n"
-                for fk in foreign_keys:
-                    fk_section += f"- {fk.get('column', 'unknown')} → {fk.get('references_table', 'unknown')}.{fk.get('references_column', 'unknown')}\n"
-            
-            # Build row count section if available
-            row_section = ""
-            if row_count is not None:
-                row_section = f"\n\nRow Count: {row_count}"
             
             # Build sample data section if available
             sample_section = ""
@@ -142,7 +126,7 @@ Table Name: {table_name}
 
 Columns:
 {column_details}
-{fk_section}{row_section}{sample_section}
+{sample_section}
 
 Please provide:
 1. **Description**: A clear 2-3 sentence description of what this table stores and its purpose
@@ -347,33 +331,21 @@ Provide a clear, helpful response based on the database schema above."""
         """Build a concise schema summary for chat context"""
         summary_parts = []
         
-        tables = dictionary_context.get('tables', {})
+        tables = dictionary_context.get('tables', [])
         
-        # Support both dict format (from metadata_json) and list format
-        if isinstance(tables, dict):
-            table_items = list(tables.items())[:10]
-            for table_name, table_data in table_items:
-                columns = table_data.get('columns', [])
-                column_names = [col.get('name', '') for col in columns[:5]]
-                column_list = ', '.join(column_names)
-                if len(columns) > 5:
-                    column_list += f" ... ({len(columns)} total)"
-                summary_parts.append(f"Table '{table_name}': {column_list}")
+        for table in tables[:10]:  # Limit to 10 tables for context
+            table_name = table.get('name', 'unknown')
+            columns = table.get('columns', [])
             
-            if len(tables) > 10:
-                summary_parts.append(f"... and {len(tables) - 10} more tables")
-        elif isinstance(tables, list):
-            for table in tables[:10]:
-                table_name = table.get('name', 'unknown')
-                columns = table.get('columns', [])
-                column_names = [col.get('name', '') for col in columns[:5]]
-                column_list = ', '.join(column_names)
-                if len(columns) > 5:
-                    column_list += f" ... ({len(columns)} total)"
-                summary_parts.append(f"Table '{table_name}': {column_list}")
+            column_names = [col.get('name', '') for col in columns[:5]]  # First 5 columns
+            column_list = ', '.join(column_names)
+            if len(columns) > 5:
+                column_list += f" ... ({len(columns)} total)"
             
-            if len(tables) > 10:
-                summary_parts.append(f"... and {len(tables) - 10} more tables")
+            summary_parts.append(f"Table '{table_name}': {column_list}")
+        
+        if len(tables) > 10:
+            summary_parts.append(f"... and {len(tables) - 10} more tables")
         
         return "\n".join(summary_parts)
     
@@ -419,7 +391,7 @@ def get_ai_service(api_key: Optional[str] = None) -> AIService:
     """
     global _ai_service_instance
     
-    if _ai_service_instance is None or api_key:
+    if _ai_service_instance is None:
         _ai_service_instance = AIService(api_key=api_key)
     
     return _ai_service_instance

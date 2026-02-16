@@ -1,0 +1,33 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-7.4.4, pluggy-1.6.0 -- C:\intelligent-data-dictionary-agent\backend\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\intelligent-data-dictionary-agent\backend
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-0.23.3, cov-4.1.0
+asyncio: mode=Mode.STRICT
+collecting ... collected 22 items
+
+tests/test_auth.py::TestAuthSignup::test_signup_success PASSED           [  4%]
+tests/test_auth.py::TestAuthSignup::test_signup_duplicate_email PASSED   [  9%]
+tests/test_auth.py::TestAuthSignup::test_signup_invalid_email PASSED     [ 13%]
+tests/test_auth.py::TestAuthSignup::test_signup_weak_password PASSED     [ 18%]
+tests/test_auth.py::TestAuthLogin::test_login_success PASSED             [ 22%]
+tests/test_auth.py::TestAuthLogin::test_login_wrong_password PASSED      [ 27%]
+tests/test_auth.py::TestAuthLogin::test_login_nonexistent_user PASSED    [ 31%]
+tests/test_auth.py::TestAuthMe::test_get_current_user_success PASSED     [ 36%]
+tests/test_auth.py::TestAuthMe::test_get_current_user_no_token PASSED    [ 40%]
+tests/test_auth.py::TestAuthMe::test_get_current_user_invalid_token PASSED [ 45%]
+tests/test_auth.py::TestAuthAPIKey::test_set_api_key_success PASSED      [ 50%]
+tests/test_auth.py::TestAuthAPIKey::test_set_api_key_unauthorized PASSED [ 54%]
+tests/test_auth.py::TestAuthLogout::test_logout_success PASSED           [ 59%]
+tests/test_dictionaries.py::TestDictionaryRetrieval::test_list_dictionaries_empty PASSED [ 63%]
+tests/test_dictionaries.py::TestDictionaryRetrieval::test_list_dictionaries_unauthorized PASSED [ 68%]
+tests/test_dictionaries.py::TestDictionaryRetrieval::test_get_dictionary_not_found PASSED [ 72%]
+tests/test_dictionaries.py::TestDictionaryGeneration::test_generate_dictionary_unauthorized PASSED [ 77%]
+tests/test_dictionaries.py::TestDictionaryGeneration::test_generate_dictionary_invalid_connection PASSED [ 81%]
+tests/test_dictionaries.py::TestDictionaryDeletion::test_delete_dictionary_not_found PASSED [ 86%]
+tests/test_dictionaries.py::TestDictionaryDeletion::test_delete_dictionary_unauthorized PASSED [ 90%]
+tests/test_dictionaries.py::TestDictionaryExport::test_export_json_not_found PASSED [ 95%]
+tests/test_dictionaries.py::TestDictionaryExport::test_export_markdown_not_found PASSED [100%]
+
+======================= 22 passed, 65 warnings in 3.14s =======================

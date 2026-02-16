@@ -24,8 +24,9 @@ import {
   ArrowForward
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
-import { loginUser, setAuthenticated } from "../utils/auth.ts";
-import FloatingAIChatbot from "../components/FloatingAIChatbot.tsx";
+import { authAPI } from "../services/api";
+import { setToken, setUser } from "../utils/auth";
+import FloatingAIChatbot from "../components/FloatingAIChatbot";
 
 function Login() {
   const navigate = useNavigate();
@@ -41,20 +42,31 @@ function Login() {
     setError("");
     setIsLoading(true);
 
-    // Simulate loading
-    setTimeout(() => {
-      const success = loginUser(email, password);
-      if (success) {
-        setAuthenticated();
-        navigate("/dashboard");
-      } else {
-        setError("Invalid credentials. Please try again.");
-        setIsLoading(false);
-      }
-    }, 800);
+    try {
+      const response = await authAPI.login({
+        email,
+        password,
+        remember_me: rememberMe,
+      });
+      const { access_token, user } = response.data;
+      setToken(access_token);
+      setUser({
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        has_api_key: user.has_api_key,
+      });
+      navigate("/dashboard");
+    } catch (err: any) {
+      const msg =
+        err.response?.data?.detail || "Login failed. Please try again.";
+      setError(msg);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleLogin();
     }
@@ -133,7 +145,7 @@ function Login() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -158,7 +170,7 @@ function Login() {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">

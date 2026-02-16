@@ -1,0 +1,22 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.12, pytest-7.4.4, pluggy-1.6.0 -- C:\intelligent-data-dictionary-agent\backend\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\intelligent-data-dictionary-agent\backend
+configfile: pytest.ini
+plugins: anyio-4.12.1, asyncio-0.23.3, cov-4.1.0
+asyncio: mode=Mode.STRICT
+collecting ... collected 9 items
+
+tests/test_dictionaries.py::TestDictionaryRetrieval::test_list_dictionaries_empty PASSED [ 11%]
+tests/test_dictionaries.py::TestDictionaryRetrieval::test_list_dictionaries_unauthorized PASSED [ 22%]
+tests/test_dictionaries.py::TestDictionaryRetrieval::test_get_dictionary_not_found PASSED [ 33%]
+tests/test_dictionaries.py::TestDictionaryGeneration::test_generate_dictionary_unauthorized PASSED [ 44%]
+tests/test_dictionaries.py::TestDictionaryGeneration::test_generate_dictionary_invalid_connection PASSED [ 55%]
+tests/test_dictionaries.py::TestDictionaryDeletion::test_delete_dictionary_not_found PASSED [ 66%]
+tests/test_dictionaries.py::TestDictionaryDeletion::test_delete_dictionary_unauthorized PASSED [ 77%]
+tests/test_dictionaries.py::TestDictionaryExport::test_export_json_not_found PASSED [ 88%]
+tests/test_dictionaries.py::TestDictionaryExport::test_export_markdown_not_found PASSED [100%]
+
+======================= 9 passed, 33 warnings in 2.47s ========================
+
+---STDERR---
