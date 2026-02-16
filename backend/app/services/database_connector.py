@@ -35,7 +35,8 @@ class DatabaseConnector:
                     port=self.port or 5432,
                     database=self.database,
                     user=self.username,
-                    password=self.password
+                    password=self.password,
+                     sslmode="require"
                 )
 
             elif self.db_type == "mysql":
