@@ -1,16 +1,17 @@
 import React from 'react';
-import { Box } from '@mui/material';
-import AppleNavbar from '../components/AppleNavbar.tsx';
-import FloatingAIChatbot from '../components/FloatingAIChatbot.tsx';
-import PageTransition from '../components/PageTransition.tsx';
+import { Box, useTheme } from '@mui/material';
+import AppleNavbar from '../components/AppleNavbar';
+import FloatingAIChatbot from '../components/FloatingAIChatbot';
+import PageTransition from '../components/PageTransition';
 
 interface MainLayoutProps {
   children: React.ReactNode;
 }
 
 function MainLayout({ children }: MainLayoutProps) {
+  const theme = useTheme();
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#fafafa' }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: theme.palette.background.default }}>
       <AppleNavbar />
       <PageTransition>
         <Box sx={{ pt: 2 }}>

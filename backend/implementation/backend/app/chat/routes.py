@@ -6,15 +6,12 @@ Integrates with AI service and data dictionary
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
-import json
 import logging
 
 from app.database.base import get_db
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
 from app.dictionaries.models import Dictionary
-from app.connections.models import Connection
-from app.core.security import encryption
 from app.services.ai_service import get_ai_service
 from app.chat.schemas import (
     ChatQuery,
@@ -24,7 +21,7 @@ from app.chat.schemas import (
 )
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/chat", tags=["chat"])
+router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("/query", response_model=ChatResponse)
@@ -61,33 +58,20 @@ async def chat_query(
                 detail="Dictionary not found"
             )
         
-        # Parse dictionary metadata from JSON string
-        metadata = json.loads(dictionary.metadata_json) if dictionary.metadata_json else {}
-        
-        # Get db_type from associated connection
-        connection = db.query(Connection).filter(
-            Connection.id == dictionary.connection_id
-        ).first()
-        db_type = connection.db_type if connection else "unknown"
+        # Parse dictionary metadata for context
+        metadata = dictionary.metadata or {}
         
         # Build dictionary context
         dictionary_context = {
             "database_name": dictionary.database_name,
-            "database_type": db_type,
-            "tables": metadata.get("tables", {}),
-            "total_tables": dictionary.total_tables,
-            "total_columns": dictionary.total_columns,
+            "database_type": dictionary.database_type,
+            "tables": metadata.get("tables", []),
+            "total_tables": len(metadata.get("tables", [])),
+            "total_columns": sum(len(t.get("columns", [])) for t in metadata.get("tables", [])),
         }
         
-        # Get AI service - decrypt user's API key if stored
-        api_key = None
-        if current_user.api_key_encrypted:
-            try:
-                api_key = encryption.decrypt(current_user.api_key_encrypted)
-            except Exception:
-                pass  # Fall back to env variable
-        
-        ai_service = get_ai_service(api_key=api_key)
+        # Get AI service
+        ai_service = get_ai_service(api_key=current_user.anthropic_api_key)
         
         # Convert conversation history to format expected by AI service
         conversation_history = [
@@ -157,36 +141,26 @@ async def get_suggested_questions(
                 detail="Dictionary not found"
             )
         
-        # Parse metadata from JSON string
-        metadata = json.loads(dictionary.metadata_json) if dictionary.metadata_json else {}
-        tables = metadata.get("tables", {})
+        # Parse metadata
+        metadata = dictionary.metadata or {}
+        tables = metadata.get("tables", [])
         
         # Generate contextual suggestions
         suggestions = []
         
-        # Get table names - handle both dict and list formats
-        table_names = []
-        if isinstance(tables, dict):
-            table_names = list(tables.keys())[:3]
-        elif isinstance(tables, list):
-            table_names = [t.get("name") for t in tables[:3]]
-        
-        if table_names:
+        if tables:
             # Questions about tables
-            if len(table_names) > 0:
-                suggestions.append(
-                    SuggestedQuestion(
-                        question=f"What does the {table_names[0]} table contain?",
-                        category="schema"
-                    )
-                )
-            if len(table_names) > 1:
-                suggestions.append(
-                    SuggestedQuestion(
-                        question=f"How are {table_names[0]} and {table_names[1]} related?",
-                        category="relationships"
-                    )
-                )
+            table_names = [t.get("name") for t in tables[:3]]
+            suggestions.extend([
+                SuggestedQuestion(
+                    question=f"What does the {table_names[0]} table contain?",
+                    category="schema"
+                ) if len(table_names) > 0 else None,
+                SuggestedQuestion(
+                    question=f"How are {table_names[0]} and {table_names[1]} related?",
+                    category="relationships"
+                ) if len(table_names) > 1 else None,
+            ])
             
             # Questions about data quality
             suggestions.append(
@@ -223,6 +197,9 @@ async def get_suggested_questions(
             ),
         ])
         
+        # Filter out None values
+        suggestions = [s for s in suggestions if s is not None]
+        
         return suggestions[:6]  # Return top 6
         
     except HTTPException:
@@ -250,14 +227,7 @@ def _generate_suggested_questions(
         List of suggested follow-up questions
     """
     suggestions = []
-    tables = dictionary_context.get("tables", {})
-    
-    # Get table names - handle both dict and list formats
-    table_names = []
-    if isinstance(tables, dict):
-        table_names = list(tables.keys())[:3]
-    elif isinstance(tables, list):
-        table_names = [t.get("name") for t in tables[:3]]
+    tables = dictionary_context.get("tables", [])
     
     # Analyze current question to determine context
     question_lower = current_question.lower()
@@ -288,7 +258,9 @@ def _generate_suggested_questions(
                 category="relationships"
             ),
         ]
-    elif "table" in question_lower and table_names:
+    elif "table" in question_lower and tables:
+        # Questions about specific tables
+        table_names = [t.get("name") for t in tables[:3]]
         suggestions = [
             SuggestedQuestion(
                 question=f"What columns are in {table_names[0]}?",

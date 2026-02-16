@@ -1,92 +1,69 @@
-import requests
-import os
-from typing import Dict, Any
+"""
+AI Service for generating data dictionary descriptions using Claude (Anthropic)
+Handles API calls, retries, error handling, and response parsing
+"""
 
-MODEL = "gemini-2.0-flash"
-API_KEY = os.getenv("GEMINI_API_KEY")
+import os
+import logging
+from typing import Dict, List, Optional, Any
+from anthropic import Anthropic, APIError, RateLimitError, APITimeoutError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+logger = logging.getLogger(__name__)
 
 
 class AIService:
-    """
-    Handles AI-based dictionary generation using Gemini API
-    """
+    """Service for AI-powered data dictionary generation using Claude"""
 
-    def __init__(self):
-        if not API_KEY:
-            raise ValueError("GEMINI_API_KEY environment variable not set")
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
 
-    # ==========================================================
-    # GENERIC GEMINI CALL
-    # ==========================================================
+        if not self.api_key:
+            raise ValueError("ANTHROPIC_API_KEY not found in environment or parameters")
 
-    def call_gemini(self, prompt: str, system: str) -> str:
+        self.client = Anthropic(api_key=self.api_key)
+        self.model = "claude-sonnet-4-20250514"
+        self.max_tokens = 2000
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent?key={API_KEY}"
-
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "systemInstruction": {"parts": [{"text": system}]}
-        }
-
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((RateLimitError, APITimeoutError)),
+        reraise=True
+    )
+    def _call_claude(self, system_prompt: str, user_prompt: str) -> str:
         try:
-            response = requests.post(url, json=payload, timeout=15)
-            response.raise_for_status()
-            data = response.json()
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}]
+            )
 
-            return data["candidates"][0]["content"]["parts"][0]["text"]
+            return response.content[0].text
 
-        except requests.exceptions.RequestException as e:
-            return f"AI request failed: {str(e)}"
+        except RateLimitError as e:
+            logger.warning(f"Rate limit hit, retrying... {e}")
+            raise
+        except APITimeoutError as e:
+            logger.warning(f"API timeout, retrying... {e}")
+            raise
+        except APIError as e:
+            logger.error(f"Claude API error: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error calling Claude: {e}")
+            raise
 
-        except (KeyError, IndexError):
-            return "AI response parsing error."
 
-    # ==========================================================
-    # DICTIONARY GENERATION
-    # ==========================================================
+# Singleton instance
+_ai_service_instance: Optional[AIService] = None
 
-    def generate_dictionary(self, schema: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Generate business-friendly descriptions for tables and columns
-        """
 
-        dictionary = {}
+def get_ai_service(api_key: Optional[str] = None) -> AIService:
+    global _ai_service_instance
 
-        system_prompt = (
-            "You are a data documentation assistant. "
-            "Generate clear, concise business-friendly descriptions."
-        )
+    if _ai_service_instance is None or api_key:
+        _ai_service_instance = AIService(api_key=api_key)
 
-        for table_name, table_data in schema.items():
-
-            # Generate table description
-            table_prompt = f"""
-            Table Name: {table_name}
-            Columns:
-            {self._format_columns(table_data.get('columns', []))}
-            
-            Generate:
-            1. A short business description of this table.
-            2. Short descriptions for each column.
-            """
-
-            ai_response = self.call_gemini(table_prompt, system_prompt)
-
-            dictionary[table_name] = {
-                "table_description": ai_response,
-                "columns": table_data.get("columns", [])
-            }
-
-        return dictionary
-
-    # ==========================================================
-    # HELPER FUNCTION
-    # ==========================================================
-
-    def _format_columns(self, columns):
-
-        formatted = ""
-        for col in columns:
-            formatted += f"- {col['name']} ({col['data_type']})\n"
-
-        return formatted
+    return _ai_service_instance

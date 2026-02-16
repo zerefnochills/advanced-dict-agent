@@ -25,8 +25,9 @@ import {
   CheckCircle
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
-import { signupUser, setAuthenticated } from "../utils/auth.ts";
-import FloatingAIChatbot from "../components/FloatingAIChatbot.tsx";
+import { authAPI } from "../services/api";
+import { setToken, setUser } from "../utils/auth";
+import FloatingAIChatbot from "../components/FloatingAIChatbot";
 
 function Signup() {
   const navigate = useNavigate();
@@ -80,17 +81,32 @@ function Signup() {
 
     setIsLoading(true);
 
-    // Simulate API call
-    setTimeout(() => {
-      signupUser({ name, email, password });
-      setAuthenticated();
-      // Instead of going straight to dashboard, we'll show welcome wizard
+    try {
+      const response = await authAPI.signup({
+        email,
+        full_name: name,
+        password,
+      });
+      const { access_token, user } = response.data;
+      setToken(access_token);
+      setUser({
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        has_api_key: user.has_api_key,
+      });
       localStorage.setItem('showWelcomeWizard', 'true');
       navigate("/dashboard");
-    }, 800);
+    } catch (err: any) {
+      const msg =
+        err.response?.data?.detail || "Signup failed. Please try again.";
+      setError(msg);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       handleSignup();
     }
@@ -169,7 +185,7 @@ function Signup() {
                 label="Full Name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -187,7 +203,7 @@ function Signup() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -205,7 +221,7 @@ function Signup() {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -267,7 +283,7 @@ function Signup() {
                 type={showConfirmPassword ? 'text' : 'password'}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyDown}
                 error={confirmPassword !== '' && password !== confirmPassword}
                 helperText={
                   confirmPassword !== '' && password !== confirmPassword
