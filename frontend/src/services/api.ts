@@ -1,9 +1,9 @@
 import axios from 'axios';
 
-// In production, use the full backend URL. In dev, use '/api' (Vite proxy handles it).
-const API_BASE = import.meta.env.VITE_API_BASE_URL
-    ? `${import.meta.env.VITE_API_BASE_URL}/api`
-    : '/api';
+// In dev, use '/api' (Vite proxy forwards to localhost:8000).
+// In production, set VITE_API_BASE_URL to your backend's /api path 
+// (e.g., https://advanced-dict-agent.onrender.com/api)
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 
 // Create axios instance with base configuration
 const api = axios.create({
