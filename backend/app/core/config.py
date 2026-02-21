@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
     
     # AI
-    ANTHROPIC_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
     
     # Application
     DEBUG: bool = True

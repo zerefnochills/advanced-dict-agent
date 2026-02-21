@@ -36,7 +36,7 @@ class DatabaseConnector:
                     database=self.database,
                     user=self.username,
                     password=self.password,
-                     sslmode="require"
+                     sslmode="prefer"
                 )
 
             elif self.db_type == "mysql":
@@ -81,6 +81,43 @@ class DatabaseConnector:
         if self.connection:
             self.connection.close()
             self.connection = None
+
+    def test_connection(self) -> Dict[str, Any]:
+        """
+        Test the database connection by connecting and running a simple query.
+
+        Returns:
+            Dict with keys: success (bool), message (str), details (dict or None)
+        """
+        try:
+            self.connect()
+            # Run a trivial query to confirm the connection works
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+            cursor.close()
+
+            tables = self.get_tables()
+            self.close()
+
+            return {
+                "success": True,
+                "message": f"Successfully connected to {self.db_type} database '{self.database}'",
+                "details": {
+                    "database": self.database,
+                    "db_type": self.db_type,
+                    "host": self.host,
+                    "port": self.port,
+                    "tables_found": len(tables),
+                }
+            }
+        except Exception as e:
+            self.close()
+            return {
+                "success": False,
+                "message": f"Connection failed: {str(e)}",
+                "details": None,
+            }
 
     # ==========================
     # BASIC UTILITIES
