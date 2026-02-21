@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useState } from 'react';
 import {
   Box,
@@ -19,6 +19,7 @@ import {
   Alert,
   CircularProgress,
   Tooltip,
+  Snackbar,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -29,19 +30,7 @@ import {
   Error as ErrorIcon,
   Storage as StorageIcon,
 } from '@mui/icons-material';
-
-interface Connection {
-  id: string;
-  name: string;
-  type: 'postgresql' | 'mysql' | 'sqlserver' | 'snowflake';
-  host: string;
-  port: number;
-  database: string;
-  username: string;
-  status: 'connected' | 'disconnected' | 'testing';
-  lastConnected?: string;
-  tables?: number;
-}
+import { connectionsAPI, ConnectionResponse, ConnectionCreate } from '../services/api';
 
 interface ConnectionFormData {
   name: string;
@@ -64,37 +53,17 @@ const dbTypeConfigs = {
 };
 
 function ConnectionManager() {
-  const [connections, setConnections] = useState<Connection[]>([
-    {
-      id: '1',
-      name: 'Production DB',
-      type: 'postgresql',
-      host: 'prod.example.com',
-      port: 5432,
-      database: 'production',
-      username: 'admin',
-      status: 'connected',
-      lastConnected: '5 minutes ago',
-      tables: 84,
-    },
-    {
-      id: '2',
-      name: 'Analytics',
-      type: 'snowflake',
-      host: 'account.snowflakecomputing.com',
-      port: 443,
-      database: 'analytics',
-      username: 'analyst',
-      status: 'connected',
-      lastConnected: '1 hour ago',
-      tables: 32,
-    },
-  ]);
-
+  const [connections, setConnections] = useState<ConnectionResponse[]>([]);
+  const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
-  const [editingConnection, setEditingConnection] = useState<Connection | null>(null);
+  const [editingConnection, setEditingConnection] = useState<ConnectionResponse | null>(null);
   const [testing, setTesting] = useState(false);
+  const [connecting, setConnecting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({
+    open: false, message: '', severity: 'success'
+  });
+  const [connectionTables, setConnectionTables] = useState<Record<string, number>>({});
 
   const [formData, setFormData] = useState<ConnectionFormData>({
     name: '',
@@ -109,15 +78,37 @@ function ConnectionManager() {
     account: '',
   });
 
-  const handleOpenDialog = (connection?: Connection) => {
+  // Fetch connections from the backend on mount
+  useEffect(() => {
+    fetchConnections();
+  }, []);
+
+  const fetchConnections = async () => {
+    try {
+      setLoading(true);
+      const response = await connectionsAPI.list();
+      setConnections(response.data);
+    } catch (error: any) {
+      console.error('Failed to fetch connections:', error);
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.detail || 'Failed to fetch connections',
+        severity: 'error',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenDialog = (connection?: ConnectionResponse) => {
     if (connection) {
       setEditingConnection(connection);
       setFormData({
         name: connection.name,
-        type: connection.type,
-        host: connection.host,
-        port: connection.port.toString(),
-        database: connection.database,
+        type: connection.db_type,
+        host: connection.host || '',
+        port: connection.port?.toString() || '',
+        database: connection.database_name,
         username: connection.username,
         password: '',
         schema: '',
@@ -158,48 +149,107 @@ function ConnectionManager() {
     });
   };
 
+  const buildConnectionPayload = (): ConnectionCreate => {
+    const payload: ConnectionCreate = {
+      name: formData.name,
+      db_type: formData.type as ConnectionCreate['db_type'],
+      host: formData.host || undefined,
+      port: formData.port ? parseInt(formData.port) : undefined,
+      database_name: formData.database,
+      username: formData.username,
+      password: formData.password,
+    };
+
+    if (formData.type === 'snowflake') {
+      payload.config = {
+        warehouse: formData.warehouse,
+        schema: formData.schema || 'PUBLIC',
+      };
+    }
+
+    return payload;
+  };
+
   const handleTestConnection = async () => {
     setTesting(true);
     setTestResult(null);
 
-    // Simulate API call
-    setTimeout(() => {
-      const success = Math.random() > 0.3; // 70% success rate for demo
+    try {
+      const payload = buildConnectionPayload();
+      const response = await connectionsAPI.test(payload);
       setTestResult({
-        success,
-        message: success
-          ? 'Connection successful! All credentials are valid.'
-          : 'Connection failed. Please check your credentials.',
+        success: response.data.success,
+        message: response.data.message,
       });
+    } catch (error: any) {
+      setTestResult({
+        success: false,
+        message: error.response?.data?.detail || 'Connection test failed. Please check your credentials.',
+      });
+    } finally {
       setTesting(false);
-    }, 2000);
-  };
-
-  const handleSaveConnection = () => {
-    const newConnection: Connection = {
-      id: editingConnection?.id || Date.now().toString(),
-      name: formData.name,
-      type: formData.type as Connection['type'],
-      host: formData.host,
-      port: parseInt(formData.port),
-      database: formData.database,
-      username: formData.username,
-      status: 'disconnected',
-      lastConnected: 'Never',
-    };
-
-    if (editingConnection) {
-      setConnections(connections.map((c) => (c.id === editingConnection.id ? newConnection : c)));
-    } else {
-      setConnections([...connections, newConnection]);
     }
-
-    handleCloseDialog();
   };
 
-  const handleDeleteConnection = (id: string) => {
+  const handleSaveConnection = async () => {
+    try {
+      const payload = buildConnectionPayload();
+      await connectionsAPI.create(payload);
+      setSnackbar({
+        open: true,
+        message: 'Connection created successfully!',
+        severity: 'success',
+      });
+      handleCloseDialog();
+      fetchConnections(); // Refresh the list
+    } catch (error: any) {
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.detail || 'Failed to save connection',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleDeleteConnection = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this connection?')) {
-      setConnections(connections.filter((c) => c.id !== id));
+      try {
+        await connectionsAPI.delete(id);
+        setSnackbar({
+          open: true,
+          message: 'Connection deleted successfully',
+          severity: 'success',
+        });
+        fetchConnections(); // Refresh the list
+      } catch (error: any) {
+        setSnackbar({
+          open: true,
+          message: error.response?.data?.detail || 'Failed to delete connection',
+          severity: 'error',
+        });
+      }
+    }
+  };
+
+  const handleConnect = async (connection: ConnectionResponse) => {
+    setConnecting(connection.id);
+    try {
+      const response = await connectionsAPI.getTables(connection.id);
+      const tableCount = response.data.tables.length;
+      setConnectionTables((prev) => ({ ...prev, [connection.id]: tableCount }));
+      setSnackbar({
+        open: true,
+        message: `Connected! Found ${tableCount} table(s) in ${connection.database_name}.`,
+        severity: 'success',
+      });
+    } catch (error: any) {
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.detail || 'Failed to connect to database',
+        severity: 'error',
+      });
+    } finally {
+      setConnecting(null);
     }
   };
 
@@ -216,88 +266,108 @@ function ConnectionManager() {
         </Button>
       </Box>
 
-      <Grid container spacing={3}>
-        {connections.map((connection) => (
-          <Grid item xs={12} md={6} lg={4} key={connection.id}>
-            <Card>
-              <CardContent>
-                <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                  <Box display="flex" alignItems="center" gap={1}>
-                    <StorageIcon color="primary" />
-                    <Typography variant="h6">{connection.name}</Typography>
+      {loading ? (
+        <Box display="flex" justifyContent="center" p={8}>
+          <CircularProgress />
+        </Box>
+      ) : (
+        <Grid container spacing={3}>
+          {connections.map((connection) => (
+            <Grid item xs={12} md={6} lg={4} key={connection.id}>
+              <Card>
+                <CardContent>
+                  <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <StorageIcon color="primary" />
+                      <Typography variant="h6">{connection.name}</Typography>
+                    </Box>
+                    <Chip
+                      label={connectionTables[connection.id] !== undefined ? 'connected' : 'disconnected'}
+                      size="small"
+                      color={connectionTables[connection.id] !== undefined ? 'success' : 'default'}
+                      icon={connectionTables[connection.id] !== undefined ? <CheckCircleIcon /> : <ErrorIcon />}
+                    />
                   </Box>
-                  <Chip
-                    label={connection.status}
-                    size="small"
-                    color={connection.status === 'connected' ? 'success' : 'default'}
-                    icon={connection.status === 'connected' ? <CheckCircleIcon /> : <ErrorIcon />}
-                  />
-                </Box>
 
-                <Box mb={2}>
-                  <Chip label={connection.type.toUpperCase()} size="small" sx={{ mb: 1 }} />
-                  <Typography variant="body2" color="text.secondary">
-                    <strong>Host:</strong> {connection.host}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    <strong>Database:</strong> {connection.database}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    <strong>Username:</strong> {connection.username}
-                  </Typography>
-                  {connection.tables && (
+                  <Box mb={2}>
+                    <Chip label={connection.db_type.toUpperCase()} size="small" sx={{ mb: 1 }} />
                     <Typography variant="body2" color="text.secondary">
-                      <strong>Tables:</strong> {connection.tables}
+                      <strong>Host:</strong> {connection.host || 'N/A'}
                     </Typography>
-                  )}
-                  <Typography variant="body2" color="text.secondary">
-                    <strong>Last connected:</strong> {connection.lastConnected}
-                  </Typography>
-                </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Database:</strong> {connection.database_name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Username:</strong> {connection.username}
+                    </Typography>
+                    {connectionTables[connection.id] !== undefined && (
+                      <Typography variant="body2" color="text.secondary">
+                        <strong>Tables:</strong> {connectionTables[connection.id]}
+                      </Typography>
+                    )}
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Last connected:</strong>{' '}
+                      {connection.last_tested
+                        ? new Date(connection.last_tested).toLocaleString()
+                        : 'Never'}
+                    </Typography>
+                  </Box>
 
-                <Box display="flex" gap={1}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    startIcon={<CableIcon />}
-                    fullWidth
-                    onClick={() => alert('Connecting to database...')}
-                  >
-                    {connection.status === 'connected' ? 'Reconnect' : 'Connect'}
-                  </Button>
-                  <Tooltip title="Edit">
-                    <IconButton size="small" onClick={() => handleOpenDialog(connection)}>
-                      <EditIcon />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Delete">
-                    <IconButton size="small" onClick={() => handleDeleteConnection(connection.id)}>
-                      <DeleteIcon />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
+                  <Box display="flex" gap={1}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={
+                        connecting === connection.id ? (
+                          <CircularProgress size={16} />
+                        ) : (
+                          <CableIcon />
+                        )
+                      }
+                      fullWidth
+                      disabled={connecting === connection.id}
+                      onClick={() => handleConnect(connection)}
+                    >
+                      {connecting === connection.id
+                        ? 'Connecting...'
+                        : connectionTables[connection.id] !== undefined
+                          ? 'Reconnect'
+                          : 'Connect'}
+                    </Button>
+                    <Tooltip title="Edit">
+                      <IconButton size="small" onClick={() => handleOpenDialog(connection)}>
+                        <EditIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete">
+                      <IconButton size="small" onClick={() => handleDeleteConnection(connection.id)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
 
-        {connections.length === 0 && (
-          <Grid item xs={12}>
-            <Paper sx={{ p: 8, textAlign: 'center' }}>
-              <StorageIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                No database connections yet
-              </Typography>
-              <Typography variant="body2" color="text.secondary" mb={3}>
-                Add your first database connection to get started
-              </Typography>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
-                Add Connection
-              </Button>
-            </Paper>
-          </Grid>
-        )}
-      </Grid>
+          {connections.length === 0 && (
+            <Grid item xs={12}>
+              <Paper sx={{ p: 8, textAlign: 'center' }}>
+                <StorageIcon sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" color="text.secondary" gutterBottom>
+                  No database connections yet
+                </Typography>
+                <Typography variant="body2" color="text.secondary" mb={3}>
+                  Add your first database connection to get started
+                </Typography>
+                <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpenDialog()}>
+                  Add Connection
+                </Button>
+              </Paper>
+            </Grid>
+          )}
+        </Grid>
+      )}
 
       {/* Add/Edit Connection Dialog */}
       <Dialog open={openDialog} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
@@ -416,7 +486,7 @@ function ConnectionManager() {
                 variant="outlined"
                 fullWidth
                 onClick={handleTestConnection}
-                disabled={testing || !formData.host || !formData.database || !formData.username}
+                disabled={testing || !formData.host || !formData.database || !formData.username || !formData.password}
                 startIcon={testing ? <CircularProgress size={20} /> : <CableIcon />}
               >
                 {testing ? 'Testing Connection...' : 'Test Connection'}
@@ -435,12 +505,28 @@ function ConnectionManager() {
           <Button
             variant="contained"
             onClick={handleSaveConnection}
-            disabled={!formData.name || !formData.host || !formData.database || !formData.username}
+            disabled={!formData.name || !formData.host || !formData.database || !formData.username || !formData.password}
           >
             {editingConnection ? 'Save Changes' : 'Add Connection'}
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

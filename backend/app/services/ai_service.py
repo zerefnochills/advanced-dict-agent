@@ -8,6 +8,7 @@ import logging
 from typing import Dict, List, Optional, Any
 from anthropic import Anthropic, APIError, RateLimitError, APITimeoutError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -16,8 +17,13 @@ class AIService:
     """Service for AI-powered data dictionary generation using Claude"""
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-
+        """
+        Initialize AI Service with Anthropic API key
+        
+        Args:
+            api_key: Anthropic API key (defaults to environment variable)
+        """
+        self.api_key = api_key or settings.ANTHROPIC_API_KEY or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("ANTHROPIC_API_KEY not found in environment or parameters")
 

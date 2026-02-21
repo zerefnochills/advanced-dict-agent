@@ -11,9 +11,11 @@ import {
   Button,
   Divider,
   CircularProgress,
-  Card,
-  CardContent,
   Grid,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -26,6 +28,13 @@ import {
 } from '@mui/icons-material';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import {
+  chatAPI,
+  dictionariesAPI,
+  DictionaryListItem,
+  ChatMessage as APIChatMessage,
+  SuggestedQuestion,
+} from '../services/api';
 
 interface Message {
   id: string;
@@ -36,26 +45,22 @@ interface Message {
   hasCode?: boolean;
 }
 
-const suggestedQuestions = [
-  'What tables contain customer information?',
-  'Show me the relationship between orders and customers',
-  'What are the data quality issues in the sales table?',
-  'Generate SQL to find top 10 customers by revenue',
-  'Which columns have the most null values?',
-  'Explain the purpose of the products table',
-];
-
 function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: "Hello! I'm your AI database assistant. I can help you understand your database schema, generate SQL queries, and answer questions about your data. What would you like to know?",
+      content:
+        "Hello! I'm your AI database assistant. Select a dictionary below, then ask me anything about your database schema, data quality, or SQL queries.",
       timestamp: new Date(),
     },
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [dictionaries, setDictionaries] = useState<DictionaryListItem[]>([]);
+  const [selectedDictId, setSelectedDictId] = useState<string>('');
+  const [suggestedQuestions, setSuggestedQuestions] = useState<SuggestedQuestion[]>([]);
+  const [loadingDicts, setLoadingDicts] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -66,8 +71,64 @@ function ChatInterface() {
     scrollToBottom();
   }, [messages]);
 
+  useEffect(() => {
+    fetchDictionaries();
+  }, []);
+
+  useEffect(() => {
+    if (selectedDictId) {
+      fetchSuggestions(selectedDictId);
+    }
+  }, [selectedDictId]);
+
+  const fetchDictionaries = async () => {
+    setLoadingDicts(true);
+    try {
+      const res = await dictionariesAPI.list();
+      setDictionaries(res.data);
+      if (res.data.length > 0) {
+        setSelectedDictId(res.data[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to fetch dictionaries:', error);
+    } finally {
+      setLoadingDicts(false);
+    }
+  };
+
+  const fetchSuggestions = async (dictId: string) => {
+    try {
+      const res = await chatAPI.getSuggestions(dictId);
+      setSuggestedQuestions(res.data);
+    } catch {
+      setSuggestedQuestions([]);
+    }
+  };
+
+  const extractSqlFromResponse = (content: string): { text: string; sql?: string } => {
+    const sqlMatch = content.match(/```sql\n([\s\S]*?)```/);
+    if (sqlMatch) {
+      const text = content.replace(/```sql\n[\s\S]*?```/, '').trim();
+      return { text, sql: sqlMatch[1].trim() };
+    }
+    return { text: content };
+  };
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
+
+    if (!selectedDictId) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: 'Please select a dictionary first. If you haven\'t generated one yet, go to the Explorer page to generate a data dictionary.',
+          timestamp: new Date(),
+        },
+      ]);
+      return;
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -77,60 +138,58 @@ function ChatInterface() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const question = inputValue;
     setInputValue('');
     setIsLoading(true);
 
-    // Simulate AI response with delay
-    setTimeout(() => {
-      const responses: Record<string, { content: string; sql?: string }> = {
-        'customer': {
-          content: 'Based on your database schema, the **customers** table contains customer information. It has the following columns:\n\n- `id` (INTEGER, Primary Key)\n- `email` (VARCHAR)\n- `name` (VARCHAR)\n- `created_at` (TIMESTAMP)\n\nThis table has 15,000 rows and is related to the orders table through the customer_id foreign key.',
-        },
-        'relationship': {
-          content: 'The **orders** table has a relationship with the **customers** table through a foreign key constraint:\n\n- `orders.customer_id` references `customers.id`\n\nThis is a one-to-many relationship, meaning one customer can have multiple orders.',
-        },
-        'sql': {
-          content: 'Here\'s a SQL query to find the top 10 customers by revenue:',
-          sql: `SELECT 
-  c.id,
-  c.name,
-  c.email,
-  SUM(o.total) as total_revenue
-FROM customers c
-JOIN orders o ON c.id = o.customer_id
-WHERE o.status = 'completed'
-GROUP BY c.id, c.name, c.email
-ORDER BY total_revenue DESC
-LIMIT 10;`,
-        },
-        'quality': {
-          content: 'Based on the data quality analysis, here are the issues found in the sales table:\n\n**Completeness Issues:**\n- `discount` column: 12% null values\n- `notes` column: 45% null values\n\n**Freshness:**\n- Last updated: 3 days ago (slightly stale)\n\n**Data Distribution:**\n- `quantity` column has 3 outliers (values > 1000)\n\nI recommend reviewing the null values and considering if they should have default values.',
-        },
-        'default': {
-          content: 'I can help you with:\n\n1. **Schema Exploration** - Understanding table structures and relationships\n2. **SQL Generation** - Creating queries for your specific needs\n3. **Data Quality** - Identifying issues and patterns\n4. **Best Practices** - Recommendations for your database\n\nWhat specific question do you have about your database?',
-        },
-      };
+    try {
+      // Build conversation history for context
+      const history: APIChatMessage[] = messages
+        .filter((m) => m.id !== '1') // skip initial greeting
+        .map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
 
-      let response = responses.default;
-      const lowerInput = inputValue.toLowerCase();
+      const res = await chatAPI.query({
+        dictionary_id: selectedDictId,
+        question,
+        conversation_history: history,
+      });
 
-      if (lowerInput.includes('customer')) response = responses.customer;
-      else if (lowerInput.includes('relationship')) response = responses.relationship;
-      else if (lowerInput.includes('sql') || lowerInput.includes('query')) response = responses.sql;
-      else if (lowerInput.includes('quality') || lowerInput.includes('issue')) response = responses.quality;
+      const { text, sql } = extractSqlFromResponse(res.data.answer);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: response.content,
+        content: text || res.data.answer,
         timestamp: new Date(),
-        sqlQuery: response.sql,
-        hasCode: !!response.sql,
+        sqlQuery: sql,
+        hasCode: !!sql,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // Update suggested questions from response
+      if (res.data.suggested_questions?.length > 0) {
+        setSuggestedQuestions(res.data.suggested_questions);
+      }
+    } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.detail ||
+        'Sorry, I encountered an error. Please check your API key in Settings and try again.';
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: errorMsg,
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const handleSuggestedQuestion = (question: string) => {
@@ -139,7 +198,6 @@ LIMIT 10;`,
 
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code);
-    // Could add a toast notification here
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -151,9 +209,37 @@ LIMIT 10;`,
 
   return (
     <Box>
-      <Typography variant="h4" fontWeight="bold" mb={3}>
-        AI Chat Assistant
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4" fontWeight="bold">
+          AI Chat Assistant
+        </Typography>
+        <FormControl size="small" sx={{ minWidth: 250 }}>
+          <InputLabel>Dictionary Context</InputLabel>
+          <Select
+            value={selectedDictId}
+            label="Dictionary Context"
+            onChange={(e) => setSelectedDictId(e.target.value)}
+            disabled={loadingDicts}
+          >
+            {dictionaries.map((d) => (
+              <MenuItem key={d.id} value={d.id}>
+                {d.database_name} ({d.total_tables} tables)
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Box>
+
+      {!loadingDicts && dictionaries.length === 0 && (
+        <Paper sx={{ p: 3, mb: 3, textAlign: 'center' }}>
+          <Typography color="text.secondary" gutterBottom>
+            No dictionaries found. Generate a data dictionary first to enable AI chat.
+          </Typography>
+          <Button variant="contained" href="/explorer" sx={{ mt: 1 }}>
+            Go to Explorer
+          </Button>
+        </Paper>
+      )}
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
@@ -230,7 +316,7 @@ LIMIT 10;`,
                       )}
                     </Box>
 
-                    {message.role === 'assistant' && (
+                    {message.role === 'assistant' && message.id !== '1' && (
                       <Box display="flex" gap={1} mt={1} ml={1}>
                         <IconButton size="small" sx={{ color: 'text.secondary' }}>
                           <ThumbUpIcon fontSize="small" />
@@ -238,7 +324,11 @@ LIMIT 10;`,
                         <IconButton size="small" sx={{ color: 'text.secondary' }}>
                           <ThumbDownIcon fontSize="small" />
                         </IconButton>
-                        <IconButton size="small" sx={{ color: 'text.secondary' }}>
+                        <IconButton
+                          size="small"
+                          sx={{ color: 'text.secondary' }}
+                          onClick={() => handleCopyCode(message.content)}
+                        >
                           <CopyIcon fontSize="small" />
                         </IconButton>
                       </Box>
@@ -278,17 +368,22 @@ LIMIT 10;`,
                   fullWidth
                   multiline
                   maxRows={3}
-                  placeholder="Ask me anything about your database..."
+                  placeholder={
+                    selectedDictId
+                      ? 'Ask me anything about your database...'
+                      : 'Select a dictionary to start chatting...'
+                  }
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
                   variant="outlined"
                   size="small"
+                  disabled={!selectedDictId}
                 />
                 <IconButton
                   color="primary"
                   onClick={handleSendMessage}
-                  disabled={!inputValue.trim() || isLoading}
+                  disabled={!inputValue.trim() || isLoading || !selectedDictId}
                   sx={{
                     bgcolor: 'primary.main',
                     color: 'white',
@@ -310,16 +405,19 @@ LIMIT 10;`,
               Suggested Questions
             </Typography>
             <Typography variant="body2" color="text.secondary" mb={2}>
-              Try asking these common questions:
+              {selectedDictId
+                ? 'Try asking these questions about your database:'
+                : 'Select a dictionary to see suggestions.'}
             </Typography>
 
             <Box display="flex" flexDirection="column" gap={1}>
-              {suggestedQuestions.map((question, index) => (
+              {suggestedQuestions.map((sq, index) => (
                 <Button
                   key={index}
                   variant="outlined"
                   size="small"
-                  onClick={() => handleSuggestedQuestion(question)}
+                  onClick={() => handleSuggestedQuestion(sq.question)}
+                  disabled={!selectedDictId}
                   sx={{
                     justifyContent: 'flex-start',
                     textAlign: 'left',
@@ -327,7 +425,7 @@ LIMIT 10;`,
                     py: 1.5,
                   }}
                 >
-                  {question}
+                  {sq.question}
                 </Button>
               ))}
             </Box>

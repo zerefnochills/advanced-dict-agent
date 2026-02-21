@@ -11,7 +11,6 @@ import {
   Zoom,
   CircularProgress,
   useTheme,
-  alpha,
 } from '@mui/material';
 import {
   Chat as ChatIcon,
@@ -20,6 +19,7 @@ import {
   SmartToy as BotIcon,
   Person as PersonIcon,
 } from '@mui/icons-material';
+import { chatAPI, dictionariesAPI, ChatMessage as APIChatMessage } from '../services/api';
 
 interface Message {
   id: string;
@@ -34,12 +34,13 @@ const FloatingAIChatbot: React.FC = () => {
     {
       id: '1',
       role: 'assistant',
-      content: "Hi! I'm your AI assistant. How can I help you today?",
+      content: "Hi! I'm your AI assistant. I can help you explore your database schema, generate queries, and answer questions. How can I help?",
       timestamp: new Date(),
     },
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [dictionaryId, setDictionaryId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
 
@@ -50,6 +51,24 @@ const FloatingAIChatbot: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Auto-select the most recent dictionary when the chatbot opens
+  useEffect(() => {
+    if (isOpen && !dictionaryId) {
+      loadDictionary();
+    }
+  }, [isOpen]);
+
+  const loadDictionary = async () => {
+    try {
+      const res = await dictionariesAPI.list();
+      if (res.data.length > 0) {
+        setDictionaryId(res.data[0].id);
+      }
+    } catch {
+      // No dictionaries available
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
@@ -62,42 +81,62 @@ const FloatingAIChatbot: React.FC = () => {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const question = inputValue;
     setInputValue('');
     setIsLoading(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const responses: Record<string, string> = {
-        'how to connect': 'To connect a database, go to the Connections page from the navigation menu, click "New Connection", select your database type, and enter your credentials. Need help with a specific database?',
-        'api key': 'To set up your API key, go to Settings → API Configuration. You can get a free Anthropic API key from console.anthropic.com. Let me know if you need help!',
-        'generate': 'To generate a data dictionary, first connect your database, then go to the Schema Explorer and click "Generate Dictionary". The AI will automatically create descriptions for your tables and columns.',
-        'quality': 'The Data Quality page shows you completeness, freshness, and uniqueness metrics for your tables. Click on any metric to see detailed insights and recommendations.',
-        'default': "I can help you with:\n• Connecting databases\n• Setting up API keys\n• Generating data dictionaries\n• Understanding data quality metrics\n• Navigating the app\n\nWhat would you like to know more about?",
-      };
-
-      let response = responses.default;
-      const lowerInput = inputValue.toLowerCase();
-
-      if (lowerInput.includes('connect') || lowerInput.includes('database')) {
-        response = responses['how to connect'];
-      } else if (lowerInput.includes('api') || lowerInput.includes('key')) {
-        response = responses['api key'];
-      } else if (lowerInput.includes('generate') || lowerInput.includes('dictionary')) {
-        response = responses['generate'];
-      } else if (lowerInput.includes('quality')) {
-        response = responses['quality'];
-      }
-
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: response,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
+    if (!dictionaryId) {
+      // No dictionary → give a helpful message
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content:
+            "I don't have a data dictionary to work with yet. Please go to the Explorer page to generate one first, then I can answer questions about your database!",
+          timestamp: new Date(),
+        },
+      ]);
       setIsLoading(false);
-    }, 1000);
+      return;
+    }
+
+    try {
+      const history: APIChatMessage[] = messages
+        .filter((m) => m.id !== '1')
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      const res = await chatAPI.query({
+        dictionary_id: dictionaryId,
+        question,
+        conversation_history: history,
+      });
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: res.data.answer,
+          timestamp: new Date(),
+        },
+      ]);
+    } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.detail ||
+        'Sorry, something went wrong. Please check your API key in Settings.';
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: errorMsg,
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -157,7 +196,7 @@ const FloatingAIChatbot: React.FC = () => {
                   AI Assistant
                 </Typography>
                 <Typography variant="caption" sx={{ color: '#86868b', fontSize: '0.75rem' }}>
-                  Always here to help
+                  {dictionaryId ? 'Connected to your database' : 'No dictionary loaded'}
                 </Typography>
               </Box>
             </Box>

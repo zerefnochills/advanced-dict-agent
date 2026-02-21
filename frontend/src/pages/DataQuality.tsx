@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Card,
@@ -17,6 +17,12 @@ import {
   Alert,
   IconButton,
   Tooltip,
+  CircularProgress,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Button,
 } from '@mui/material';
 import {
   CheckCircle as CheckCircleIcon,
@@ -26,98 +32,173 @@ import {
   Refresh as RefreshIcon,
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
+  TableChart as TableChartIcon,
 } from '@mui/icons-material';
 import {
   PieChart,
   Pie,
   Cell,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip as RechartsTooltip,
   Legend,
   ResponsiveContainer,
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
 } from 'recharts';
+import { dictionariesAPI, DictionaryListItem, DictionaryResponse } from '../services/api';
 
-interface QualityMetric {
-  name: string;
-  score: number;
-  status: 'excellent' | 'good' | 'warning' | 'critical';
-  trend: 'up' | 'down' | 'stable';
+interface ColumnMetrics {
+  null_count?: number;
+  null_percentage?: number;
+  distinct_count?: number;
+  min_value?: any;
+  max_value?: any;
 }
 
-interface TableQuality {
-  tableName: string;
-  completeness: number;
-  freshness: string;
-  uniqueness: number;
-  issues: number;
-  status: 'good' | 'warning' | 'critical';
+interface TableQualityData {
+  overall_quality_score?: number;
+  completeness?: number;
+  total_rows?: number;
+  column_metrics?: Record<string, ColumnMetrics>;
+  [key: string]: any;
 }
 
-const COLORS = ['#4caf50', '#ff9800', '#f44336'];
+interface SchemaMetadata {
+  tables: Record<string, {
+    columns: any[];
+    primary_keys: string[];
+    foreign_keys: any[];
+    row_count?: number;
+  }>;
+  total_tables: number;
+}
+
+const COLORS = ['#4caf50', '#ff9800', '#f44336', '#2196f3', '#9c27b0', '#00bcd4'];
 
 function DataQuality() {
-  const overallScore = 87;
+  const [dictionaries, setDictionaries] = useState<DictionaryListItem[]>([]);
+  const [selectedDictId, setSelectedDictId] = useState<string>('');
+  const [dictionaryData, setDictionaryData] = useState<DictionaryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingDict, setLoadingDict] = useState(false);
 
-  const metrics: QualityMetric[] = [
-    { name: 'Completeness', score: 94, status: 'excellent', trend: 'up' },
-    { name: 'Freshness', score: 78, status: 'good', trend: 'stable' },
-    { name: 'Uniqueness', score: 92, status: 'excellent', trend: 'up' },
-    { name: 'Consistency', score: 85, status: 'good', trend: 'down' },
-    { name: 'Validity', score: 88, status: 'good', trend: 'stable' },
-    { name: 'Accuracy', score: 81, status: 'good', trend: 'up' },
-  ];
+  useEffect(() => {
+    fetchDictionaries();
+  }, []);
 
-  const tableQuality: TableQuality[] = [
-    { tableName: 'customers', completeness: 98, freshness: '1 hour ago', uniqueness: 100, issues: 2, status: 'good' },
-    { tableName: 'orders', completeness: 95, freshness: '30 min ago', uniqueness: 99, issues: 5, status: 'good' },
-    { tableName: 'products', completeness: 88, freshness: '2 days ago', uniqueness: 98, issues: 12, status: 'warning' },
-    { tableName: 'inventory', completeness: 72, freshness: '1 week ago', uniqueness: 95, issues: 28, status: 'critical' },
-    { tableName: 'transactions', completeness: 91, freshness: '5 min ago', uniqueness: 100, issues: 7, status: 'good' },
-  ];
-
-  const issueDistribution = [
-    { name: 'Null Values', value: 45, color: '#4caf50' },
-    { name: 'Duplicates', value: 20, color: '#ff9800' },
-    { name: 'Outliers', value: 15, color: '#f44336' },
-    { name: 'Invalid Format', value: 12, color: '#2196f3' },
-    { name: 'Inconsistencies', value: 8, color: '#9c27b0' },
-  ];
-
-  const qualityTrend = [
-    { month: 'Jan', score: 82 },
-    { month: 'Feb', score: 84 },
-    { month: 'Mar', score: 83 },
-    { month: 'Apr', score: 86 },
-    { month: 'May', score: 87 },
-  ];
-
-  const columnIssues = [
-    { column: 'customers.email', issue: 'Invalid format', count: 234, severity: 'warning' },
-    { column: 'orders.discount', issue: 'Null values', count: 1205, severity: 'critical' },
-    { column: 'products.price', issue: 'Outliers', count: 45, severity: 'warning' },
-    { column: 'inventory.stock', issue: 'Negative values', count: 12, severity: 'critical' },
-    { column: 'transactions.amount', issue: 'Missing', count: 89, severity: 'warning' },
-  ];
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'excellent':
-      case 'good':
-        return 'success';
-      case 'warning':
-        return 'warning';
-      case 'critical':
-        return 'error';
-      default:
-        return 'default';
+  const fetchDictionaries = async () => {
+    setLoading(true);
+    try {
+      const res = await dictionariesAPI.list();
+      setDictionaries(res.data);
+      if (res.data.length > 0) {
+        setSelectedDictId(res.data[0].id);
+        await loadDictionary(res.data[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to fetch dictionaries:', error);
+    } finally {
+      setLoading(false);
     }
   };
+
+  const loadDictionary = async (dictId: string) => {
+    setLoadingDict(true);
+    try {
+      const res = await dictionariesAPI.get(dictId);
+      setDictionaryData(res.data);
+    } catch (error) {
+      console.error('Failed to load dictionary:', error);
+    } finally {
+      setLoadingDict(false);
+    }
+  };
+
+  const handleDictChange = async (dictId: string) => {
+    setSelectedDictId(dictId);
+    await loadDictionary(dictId);
+  };
+
+  const handleRefresh = async () => {
+    if (selectedDictId) {
+      await loadDictionary(selectedDictId);
+    }
+  };
+
+  // ── Computed data from the dictionary ──────────────────────
+  const qualityMetrics = dictionaryData?.quality_metrics as Record<string, TableQualityData> | null | undefined;
+  const metadata = dictionaryData?.metadata as unknown as SchemaMetadata | null | undefined;
+
+  // Compute overall score as average of all table scores
+  const tableNames = qualityMetrics ? Object.keys(qualityMetrics) : [];
+  const tableScores = tableNames.map((t) => qualityMetrics![t]?.overall_quality_score ?? null).filter((s) => s !== null) as number[];
+  const overallScore = tableScores.length > 0 ? Math.round(tableScores.reduce((a, b) => a + b, 0) / tableScores.length) : null;
+
+  // Compute completeness average
+  const completenessValues = tableNames.map((t) => {
+    const q = qualityMetrics![t];
+    if (typeof q?.completeness === 'number') return q.completeness;
+    return null;
+  }).filter((v) => v !== null) as number[];
+  const avgCompleteness = completenessValues.length > 0 ? Math.round(completenessValues.reduce((a, b) => a + b, 0) / completenessValues.length) : null;
+
+  // Aggregate null issues across all tables
+  const aggregateColumnIssues: { column: string; issue: string; count: number; severity: 'warning' | 'critical' }[] = [];
+  let totalNulls = 0;
+  let totalDistinctIssues = 0;
+
+  if (qualityMetrics) {
+    for (const [tableName, tq] of Object.entries(qualityMetrics)) {
+      if (tq?.column_metrics) {
+        for (const [colName, cm] of Object.entries(tq.column_metrics)) {
+          if (cm.null_count && cm.null_count > 0) {
+            totalNulls += cm.null_count;
+            const severity: 'warning' | 'critical' = (cm.null_percentage ?? 0) > 50 ? 'critical' : 'warning';
+            aggregateColumnIssues.push({
+              column: `${tableName}.${colName}`,
+              issue: `Null values (${cm.null_percentage?.toFixed(1)}%)`,
+              count: cm.null_count,
+              severity,
+            });
+          }
+        }
+      }
+    }
+  }
+  // Sort by count descending, take top 10
+  aggregateColumnIssues.sort((a, b) => b.count - a.count);
+  const topIssues = aggregateColumnIssues.slice(0, 10);
+
+  // Prepare table-level quality data for the table
+  const tableQualityRows = tableNames.map((tableName) => {
+    const tq = qualityMetrics![tableName];
+    const tm = metadata?.tables?.[tableName];
+    const colMetrics = tq?.column_metrics || {};
+    const nullCols = Object.values(colMetrics).filter((c) => c.null_count && c.null_count > 0).length;
+
+    return {
+      tableName,
+      score: tq?.overall_quality_score ?? null,
+      completeness: tq?.completeness ?? null,
+      totalRows: tq?.total_rows ?? tm?.row_count ?? null,
+      columns: tm?.columns?.length ?? Object.keys(colMetrics).length,
+      nullColumns: nullCols,
+      status: (tq?.overall_quality_score ?? 100) >= 80 ? 'good' : (tq?.overall_quality_score ?? 100) >= 60 ? 'warning' : 'critical',
+    };
+  });
+
+  // Prepare bar chart data for table quality comparison
+  const barChartData = tableQualityRows.map((t) => ({
+    name: t.tableName.length > 15 ? t.tableName.substring(0, 12) + '...' : t.tableName,
+    score: t.score ?? 0,
+  }));
+
+  // Issue distribution by type
+  const issueDistribution = totalNulls > 0
+    ? [{ name: 'Null Values', value: totalNulls, color: '#ff9800' }]
+    : [];
 
   const getScoreColor = (score: number) => {
     if (score >= 90) return '#4caf50';
@@ -125,253 +206,335 @@ function DataQuality() {
     return '#f44336';
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'good':
+        return 'success' as const;
+      case 'warning':
+        return 'warning' as const;
+      case 'critical':
+        return 'error' as const;
+      default:
+        return 'default' as const;
+    }
+  };
+
+  // ── Loading / Empty States ──────────────────────────────────
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+        <CircularProgress size={60} />
+      </Box>
+    );
+  }
+
+  if (dictionaries.length === 0) {
+    return (
+      <Box textAlign="center" py={8}>
+        <TableChartIcon sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }} />
+        <Typography variant="h5" gutterBottom>
+          No data dictionaries yet
+        </Typography>
+        <Typography color="text.secondary" mb={3}>
+          Generate a data dictionary with quality analysis enabled to see quality metrics.
+        </Typography>
+        <Button variant="contained" href="/explorer">
+          Go to Explorer
+        </Button>
+      </Box>
+    );
+  }
+
+  const hasQualityData = qualityMetrics && tableNames.length > 0;
+
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight="bold">
           Data Quality Dashboard
         </Typography>
-        <Tooltip title="Refresh metrics">
-          <IconButton>
-            <RefreshIcon />
-          </IconButton>
-        </Tooltip>
+        <Box display="flex" gap={2} alignItems="center">
+          {dictionaries.length > 1 && (
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Dictionary</InputLabel>
+              <Select
+                value={selectedDictId}
+                label="Dictionary"
+                onChange={(e) => handleDictChange(e.target.value)}
+              >
+                {dictionaries.map((d) => (
+                  <MenuItem key={d.id} value={d.id}>
+                    {d.database_name} ({d.total_tables} tables)
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+          <Tooltip title="Refresh metrics">
+            <IconButton onClick={handleRefresh}>
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
-      {/* Overall Score */}
-      <Card sx={{ mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
-        <CardContent>
-          <Grid container alignItems="center">
-            <Grid item xs={12} md={6}>
-              <Typography variant="h6" color="white" gutterBottom>
-                Overall Data Quality Score
-              </Typography>
-              <Typography variant="h2" color="white" fontWeight="bold">
-                {overallScore}%
-              </Typography>
-              <Typography variant="body2" color="white" sx={{ opacity: 0.9, mt: 1 }}>
-                <TrendingUpIcon sx={{ fontSize: 16, verticalAlign: 'middle', mr: 0.5 }} />
-                +3% from last month
-              </Typography>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Box sx={{ position: 'relative', display: 'inline-flex', width: '100%', justifyContent: 'center' }}>
-                <ResponsiveContainer width="100%" height={150}>
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { value: overallScore },
-                        { value: 100 - overallScore },
-                      ]}
-                      cx="50%"
-                      cy="50%"
-                      startAngle={90}
-                      endAngle={-270}
-                      innerRadius={45}
-                      outerRadius={60}
-                      dataKey="value"
-                    >
-                      <Cell fill="white" />
-                      <Cell fill="rgba(255,255,255,0.3)" />
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              </Box>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
+      {loadingDict ? (
+        <Box display="flex" justifyContent="center" py={8}>
+          <CircularProgress size={48} />
+        </Box>
+      ) : !hasQualityData ? (
+        <Box textAlign="center" py={8}>
+          <InfoIcon sx={{ fontSize: 80, color: 'text.disabled', mb: 2 }} />
+          <Typography variant="h5" gutterBottom>
+            No quality metrics available
+          </Typography>
+          <Typography color="text.secondary" mb={3}>
+            The selected dictionary "{dictionaryData?.database_name}" was generated without quality analysis.
+            Generate a new dictionary with "Include Quality Analysis" enabled.
+          </Typography>
+          <Button variant="contained" href="/explorer">
+            Go to Explorer
+          </Button>
+        </Box>
+      ) : (
+        <>
+          {/* Overall Score */}
+          <Card sx={{ mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+            <CardContent>
+              <Grid container alignItems="center">
+                <Grid item xs={12} md={6}>
+                  <Typography variant="h6" color="white" gutterBottom>
+                    Overall Data Quality Score
+                  </Typography>
+                  <Typography variant="h2" color="white" fontWeight="bold">
+                    {overallScore !== null ? `${overallScore}%` : 'N/A'}
+                  </Typography>
+                  <Typography variant="body2" color="white" sx={{ opacity: 0.9, mt: 1 }}>
+                    Based on {tableNames.length} table{tableNames.length !== 1 ? 's' : ''}
+                    {avgCompleteness !== null && ` · Avg completeness: ${avgCompleteness}%`}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Box sx={{ position: 'relative', display: 'inline-flex', width: '100%', justifyContent: 'center' }}>
+                    <ResponsiveContainer width="100%" height={150}>
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { value: overallScore ?? 0 },
+                            { value: 100 - (overallScore ?? 0) },
+                          ]}
+                          cx="50%"
+                          cy="50%"
+                          startAngle={90}
+                          endAngle={-270}
+                          innerRadius={45}
+                          outerRadius={60}
+                          dataKey="value"
+                        >
+                          <Cell fill="white" />
+                          <Cell fill="rgba(255,255,255,0.3)" />
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
 
-      {/* Quality Metrics */}
-      <Grid container spacing={3} mb={3}>
-        {metrics.map((metric) => (
-          <Grid item xs={12} sm={6} md={4} key={metric.name}>
-            <Card>
-              <CardContent>
-                <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-                  <Typography variant="h6">{metric.name}</Typography>
-                  {metric.trend === 'up' && <TrendingUpIcon color="success" />}
-                  {metric.trend === 'down' && <TrendingDownIcon color="error" />}
-                </Box>
-                <Typography variant="h3" fontWeight="bold" color={getScoreColor(metric.score)}>
-                  {metric.score}%
+          <Grid container spacing={3}>
+            {/* Table Quality Comparison Bar Chart */}
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Quality by Table
                 </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={metric.score}
-                  sx={{
-                    mt: 2,
-                    height: 8,
-                    borderRadius: 1,
-                    bgcolor: 'grey.200',
-                    '& .MuiLinearProgress-bar': {
-                      bgcolor: getScoreColor(metric.score),
-                    },
-                  }}
-                />
-                <Box mt={1}>
-                  <Chip label={metric.status} size="small" color={getStatusColor(metric.status)} />
-                </Box>
-              </CardContent>
-            </Card>
+                {barChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={barChartData} layout="vertical" margin={{ left: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis type="number" domain={[0, 100]} />
+                      <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 12 }} />
+                      <RechartsTooltip />
+                      <Bar dataKey="score" name="Quality Score" fill="#667eea" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <Typography color="text.secondary" textAlign="center" py={4}>
+                    No per-table scores available
+                  </Typography>
+                )}
+              </Paper>
+            </Grid>
+
+            {/* Issue Distribution */}
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Issue Summary
+                </Typography>
+                {aggregateColumnIssues.length > 0 ? (
+                  <Box>
+                    <Grid container spacing={2} mb={2}>
+                      <Grid item xs={6}>
+                        <Card variant="outlined">
+                          <CardContent>
+                            <Typography variant="subtitle2" color="text.secondary">Total Issues</Typography>
+                            <Typography variant="h4" fontWeight="bold" color="warning.main">
+                              {aggregateColumnIssues.length}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Card variant="outlined">
+                          <CardContent>
+                            <Typography variant="subtitle2" color="text.secondary">Critical</Typography>
+                            <Typography variant="h4" fontWeight="bold" color="error.main">
+                              {aggregateColumnIssues.filter((i) => i.severity === 'critical').length}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    </Grid>
+                    <Typography variant="body2" color="text.secondary">
+                      {totalNulls.toLocaleString()} total null values found across {aggregateColumnIssues.length} columns
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box textAlign="center" py={4}>
+                    <CheckCircleIcon sx={{ fontSize: 60, color: 'success.main', mb: 1 }} />
+                    <Typography color="text.secondary">No data quality issues found!</Typography>
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+
+            {/* Table-Level Quality Overview */}
+            <Grid item xs={12}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Table-Level Quality
+                </Typography>
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Table Name</TableCell>
+                        <TableCell align="center">Quality Score</TableCell>
+                        <TableCell align="center">Completeness</TableCell>
+                        <TableCell align="center">Rows</TableCell>
+                        <TableCell align="center">Columns with Issues</TableCell>
+                        <TableCell align="center">Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {tableQualityRows.map((table) => (
+                        <TableRow key={table.tableName}>
+                          <TableCell>
+                            <Typography fontWeight="bold">{table.tableName}</Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            {table.score !== null ? (
+                              <Box display="flex" alignItems="center" justifyContent="center" gap={1}>
+                                <Typography fontWeight="bold" color={getScoreColor(table.score)}>
+                                  {table.score}%
+                                </Typography>
+                                <LinearProgress
+                                  variant="determinate"
+                                  value={table.score}
+                                  sx={{
+                                    width: 60, height: 6, borderRadius: 1,
+                                    '& .MuiLinearProgress-bar': { bgcolor: getScoreColor(table.score) },
+                                  }}
+                                />
+                              </Box>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">-</Typography>
+                            )}
+                          </TableCell>
+                          <TableCell align="center">
+                            {table.completeness !== null
+                              ? (typeof table.completeness === 'number'
+                                ? `${table.completeness}%`
+                                : table.completeness)
+                              : '-'}
+                          </TableCell>
+                          <TableCell align="center">
+                            {table.totalRows !== null ? table.totalRows.toLocaleString() : '-'}
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              label={table.nullColumns}
+                              size="small"
+                              color={table.nullColumns > 5 ? 'error' : table.nullColumns > 2 ? 'warning' : 'success'}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip label={table.status} size="small" color={getStatusColor(table.status)} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+            </Grid>
+
+            {/* Top Column Issues */}
+            {topIssues.length > 0 && (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Top Issues Requiring Attention
+                  </Typography>
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    <Typography variant="body2">
+                      Found {aggregateColumnIssues.length} data quality issues across your tables.
+                      Review and fix critical issues first.
+                    </Typography>
+                  </Alert>
+                  <TableContainer>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Column</TableCell>
+                          <TableCell>Issue Type</TableCell>
+                          <TableCell align="center">Affected Rows</TableCell>
+                          <TableCell align="center">Severity</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {topIssues.map((issue, index) => (
+                          <TableRow key={index}>
+                            <TableCell>
+                              <Typography fontFamily="monospace" fontSize={14}>
+                                {issue.column}
+                              </Typography>
+                            </TableCell>
+                            <TableCell>{issue.issue}</TableCell>
+                            <TableCell align="center">
+                              <Typography fontWeight="bold">{issue.count.toLocaleString()}</Typography>
+                            </TableCell>
+                            <TableCell align="center">
+                              <Chip
+                                label={issue.severity}
+                                size="small"
+                                color={issue.severity === 'critical' ? 'error' : 'warning'}
+                                icon={issue.severity === 'critical' ? <ErrorIcon /> : <WarningIcon />}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+            )}
           </Grid>
-        ))}
-      </Grid>
-
-      <Grid container spacing={3}>
-        {/* Issue Distribution */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Issue Distribution
-            </Typography>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={issueDistribution}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {issueDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <RechartsTooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </Paper>
-        </Grid>
-
-        {/* Quality Trend */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Quality Score Trend
-            </Typography>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={qualityTrend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis domain={[0, 100]} />
-                <RechartsTooltip />
-                <Legend />
-                <Line type="monotone" dataKey="score" stroke="#667eea" strokeWidth={3} name="Quality Score" />
-              </LineChart>
-            </ResponsiveContainer>
-          </Paper>
-        </Grid>
-
-        {/* Table Quality Overview */}
-        <Grid item xs={12}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Table-Level Quality
-            </Typography>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Table Name</TableCell>
-                    <TableCell align="center">Completeness</TableCell>
-                    <TableCell align="center">Freshness</TableCell>
-                    <TableCell align="center">Uniqueness</TableCell>
-                    <TableCell align="center">Issues</TableCell>
-                    <TableCell align="center">Status</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {tableQuality.map((table) => (
-                    <TableRow key={table.tableName}>
-                      <TableCell>
-                        <Typography fontWeight="bold">{table.tableName}</Typography>
-                      </TableCell>
-                      <TableCell align="center">
-                        <Box display="flex" alignItems="center" justifyContent="center" gap={1}>
-                          <Typography>{table.completeness}%</Typography>
-                          <LinearProgress
-                            variant="determinate"
-                            value={table.completeness}
-                            sx={{ width: 60, height: 6, borderRadius: 1 }}
-                          />
-                        </Box>
-                      </TableCell>
-                      <TableCell align="center">
-                        <Typography variant="body2">{table.freshness}</Typography>
-                      </TableCell>
-                      <TableCell align="center">{table.uniqueness}%</TableCell>
-                      <TableCell align="center">
-                        <Chip
-                          label={table.issues}
-                          size="small"
-                          color={table.issues > 20 ? 'error' : table.issues > 10 ? 'warning' : 'success'}
-                        />
-                      </TableCell>
-                      <TableCell align="center">
-                        <Chip label={table.status} size="small" color={getStatusColor(table.status)} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-        </Grid>
-
-        {/* Critical Issues */}
-        <Grid item xs={12}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Top Issues Requiring Attention
-            </Typography>
-            <Alert severity="info" sx={{ mb: 2 }}>
-              <Typography variant="body2">
-                Found {columnIssues.length} data quality issues across your tables. Review and fix critical issues
-                first.
-              </Typography>
-            </Alert>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Column</TableCell>
-                    <TableCell>Issue Type</TableCell>
-                    <TableCell align="center">Affected Rows</TableCell>
-                    <TableCell align="center">Severity</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {columnIssues.map((issue, index) => (
-                    <TableRow key={index}>
-                      <TableCell>
-                        <Typography fontFamily="monospace" fontSize={14}>
-                          {issue.column}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>{issue.issue}</TableCell>
-                      <TableCell align="center">
-                        <Typography fontWeight="bold">{issue.count.toLocaleString()}</Typography>
-                      </TableCell>
-                      <TableCell align="center">
-                        <Chip
-                          label={issue.severity}
-                          size="small"
-                          color={issue.severity === 'critical' ? 'error' : 'warning'}
-                          icon={issue.severity === 'critical' ? <ErrorIcon /> : <WarningIcon />}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          </Paper>
-        </Grid>
-      </Grid>
+        </>
+      )}
     </Box>
   );
 }
